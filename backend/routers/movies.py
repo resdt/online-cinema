@@ -5,19 +5,8 @@ import utils.connections as conn
 from fastapi import APIRouter, HTTPException, Request, Response, status, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
 
-from model import MovieRecommender
-
 
 router = APIRouter()
-
-model = None
-
-
-@router.on_event("startup")
-async def load_model():
-    global model
-    key = "recommendation_model.pkl"
-    model = await MovieRecommender.load_from_s3(key)
 
 
 async def fetch_movie(movie_id):
@@ -138,31 +127,6 @@ RETURNING movie_id;
         return {"message": "Movie data uploaded successfully."}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to upload movie data: {str(e)}")
-
-
-@router.get("/api/v1/movies/you_may_like")
-async def you_may_like(user_id: int, top_n: int = 10):
-    movie_query = """
-SELECT movie_id
-  FROM movie;
-    """
-    try:
-        movie_data = await conn.execute_query(movie_query)
-        if not movie_data:
-            raise HTTPException(status_code=404, detail="Movie not found")
-        all_movies = [cur_movie["movie_id"] for cur_movie in movie_data]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
-
-    recommendations = model.recommend_movies(user_id=user_id, N=top_n)
-    recommendations = [(int(movie_id), float(score)) for movie_id, score in recommendations]
-
-    recommended_movie_ids = [cur_movie[0] for cur_movie in recommendations]
-    movies = await asyncio.gather(*[fetch_movie(movie_id) for movie_id in recommended_movie_ids])
-    result = [movie for movie in movies
-              if movie["title"] is not None
-              and movie["poster_url"] is not None]
-    return result
 
 
 @router.get("/api/v1/movies/top_rated")
